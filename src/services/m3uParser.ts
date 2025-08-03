@@ -8,6 +8,7 @@ export interface M3UItem {
   category?: string;
   description?: string;
   duration?: string;
+  isValid?: boolean; // Nova propriedade para indicar se a URL é válida
 }
 
 export interface M3UData {
@@ -17,11 +18,81 @@ export interface M3UData {
   categories: string[];
 }
 
+export interface M3UCache {
+  data: M3UData;
+  url: string;
+  timestamp: number;
+  lastModified?: string;
+}
+
 class M3UParser {
+  private cache: M3UCache | null = null;
+  private readonly CACHE_DURATION = 30 * 60 * 1000; // 30 minutos em millisegundos
+
+  // Função para validar URL
+  private isValidUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      // Verificar se o protocolo é http ou https
+      if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+        return false;
+      }
+      // Verificar se o hostname não está vazio
+      if (!urlObj.hostname || urlObj.hostname.length === 0) {
+        return false;
+      }
+      // Verificar se o hostname não contém caracteres inválidos
+      if (urlObj.hostname.includes(' ') || urlObj.hostname.includes('\t')) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Função para testar conectividade da URL (opcional)
+  private async testUrlConnectivity(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
+      
+      const response = await fetch(url, { 
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'IPTV-App/1.0'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok || response.status < 400;
+    } catch {
+      return false;
+    }
+  }
+
+  // Função para transformar URLs - substitui aguacomgas.shop por supg.nl
+  private transformUrl(url: string): string {
+    try {
+      // Verificar se a URL contém o host problemático
+      if (url.includes('aguacomgas.shop')) {
+        const transformedUrl = url.replace(/aguacomgas\.shop/g, 'supg.nl');
+        return transformedUrl;
+      }
+      return url;
+    } catch (error) {
+      console.warn(`⚠️ Erro ao transformar URL: ${url}`, error);
+      return url;
+    }
+  }
+
   private parseM3UContent(content: string): M3UItem[] {
     const lines = content.split('\n');
     const items: M3UItem[] = [];
     let currentItem: Partial<M3UItem> = {};
+    let invalidUrlsCount = 0;
+    let transformedUrlsCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -39,11 +110,29 @@ class M3UParser {
           duration: info.duration,
         };
       } else if (line.startsWith('http') && currentItem.name) {
-        // URL line
-        currentItem.url = line;
-        items.push(currentItem as M3UItem);
+        // URL line - transformar e validar antes de adicionar
+        const transformedUrl = this.transformUrl(line);
+        if (transformedUrl !== line) {
+          transformedUrlsCount++;
+        }
+        const isValidUrl = this.isValidUrl(transformedUrl);
+        if (isValidUrl) {
+          currentItem.url = transformedUrl;
+          currentItem.isValid = true;
+          items.push(currentItem as M3UItem);
+        } else {
+          invalidUrlsCount++;
+          console.warn(`⚠️ URL inválida ignorada: ${transformedUrl}`);
+        }
         currentItem = {};
       }
+    }
+
+    if (transformedUrlsCount > 0) {
+      console.log(`✅ ${transformedUrlsCount} URLs foram transformadas`);
+    }
+    if (invalidUrlsCount > 0) {
+      console.warn(`⚠️ ${invalidUrlsCount} URLs inválidas foram filtradas do M3U`);
     }
 
     return items;
@@ -57,9 +146,9 @@ class M3UParser {
   } {
     const result = {
       name: '',
-      logo: undefined,
-      group: undefined,
-      duration: undefined,
+      logo: undefined as string | undefined,
+      group: undefined as string | undefined,
+      duration: undefined as string | undefined,
     };
 
     // Extract logo
@@ -125,9 +214,74 @@ class M3UParser {
     return 'live';
   }
 
-  async fetchM3U(url: string): Promise<M3UData> {
+  // Métodos para gerenciar cache
+  private isCacheValid(url: string): boolean {
+    if (!this.cache || this.cache.url !== url) {
+      return false;
+    }
+    
+    const now = Date.now();
+    const cacheAge = now - this.cache.timestamp;
+    return cacheAge < this.CACHE_DURATION;
+  }
+
+  private setCache(url: string, data: M3UData, lastModified?: string): void {
+    this.cache = {
+      data,
+      url,
+      timestamp: Date.now(),
+      lastModified,
+    };
+  }
+
+  private getCache(url: string): M3UData | null {
+    if (this.isCacheValid(url)) {
+      console.log(`📦 Usando cache para: ${url}`);
+      return this.cache!.data;
+    }
+    return null;
+  }
+
+  public clearCache(): void {
+    this.cache = null;
+    console.log('🗑️ Cache limpo');
+  }
+
+  public getCacheInfo(): { hasCache: boolean; url?: string; age?: number } {
+    if (!this.cache) {
+      return { hasCache: false };
+    }
+    
+    const age = Date.now() - this.cache.timestamp;
+    return {
+      hasCache: true,
+      url: this.cache.url,
+      age: Math.floor(age / 1000), // idade em segundos
+    };
+  }
+
+  async fetchM3U(url: string, forceRefresh: boolean = false): Promise<M3UData> {
     try {
-      const response = await fetch(url);
+      // Verificar cache primeiro (se não for forçado a atualizar)
+      if (!forceRefresh) {
+        const cachedData = this.getCache(url);
+        if (cachedData) {
+          return cachedData;
+        }
+      }
+
+      console.log(`🔄 Carregando M3U de: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'IPTV-App/1.0'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const content = await response.text();
       
       if (!content.startsWith('#EXTM3U')) {
@@ -136,28 +290,33 @@ class M3UParser {
 
       const items = this.parseM3UContent(content);
       
-      // Separate items by type
+      // Separar itens por tipo
       const channels = items.filter(item => item.type === 'live');
       const movies = items.filter(item => item.type === 'movie');
       const series = items.filter(item => item.type === 'series');
 
-      // Get unique categories and clean them
-      const categories = [...new Set(items.map(item => item.category).filter(Boolean))].sort();
+      // Obter categorias únicas e limpar
+      const categories = [...new Set(items.map(item => item.category).filter((cat): cat is string => Boolean(cat)))].sort();
 
-      console.log(`📊 M3U Processado: ${items.length} itens totais`);
-      console.log(`📺 Canais: ${channels.length}`);
-      console.log(`🎬 Filmes: ${movies.length}`);
-      console.log(`📺 Séries: ${series.length}`);
-      console.log(`🏷️ Categorias: ${categories.length}`);
-
-      return {
+      const data: M3UData = {
         channels,
         movies,
         series,
         categories,
       };
+
+      // Salvar no cache
+      this.setCache(url, data, response.headers.get('last-modified') || undefined);
+
+      console.log(`📊 M3U Processado: ${items.length} itens válidos`);
+      console.log(`📺 Canais: ${channels.length}`);
+      console.log(`🎬 Filmes: ${movies.length}`);
+      console.log(`📺 Séries: ${series.length}`);
+      console.log(`🏷️ Categorias: ${categories.length}`);
+
+      return data;
     } catch (error) {
-      console.error('Error fetching M3U:', error);
+      console.error('❌ Erro ao carregar M3U:', error);
       throw error;
     }
   }
@@ -178,7 +337,7 @@ class M3UParser {
           const channels = items.filter(item => item.type === 'live');
           const movies = items.filter(item => item.type === 'movie');
           const series = items.filter(item => item.type === 'series');
-          const categories = [...new Set(items.map(item => item.category).filter(Boolean))];
+          const categories = [...new Set(items.map(item => item.category).filter((cat): cat is string => Boolean(cat)))];
 
           resolve({
             channels,

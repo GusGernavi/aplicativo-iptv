@@ -14,7 +14,7 @@ interface IPTVStore {
   error: string | null;
   
   // Actions
-  loadM3UFromUrl: (url: string) => Promise<void>;
+  loadM3UFromUrl: (url: string, forceRefresh?: boolean) => Promise<void>;
   loadM3UFromFile: (file: File) => Promise<void>;
   setSelectedCategory: (category: string | null) => void;
   clearError: () => void;
@@ -36,11 +36,11 @@ export const useIPTVStore = create<IPTVStore>((set, get) => ({
   error: null,
 
   // Actions
-  loadM3UFromUrl: async (url: string) => {
+  loadM3UFromUrl: async (url: string, forceRefresh: boolean = false) => {
     set({isLoading: true, error: null});
     
     try {
-      const data: M3UData = await m3uParser.fetchM3U(url);
+      const data: M3UData = await m3uParser.fetchM3U(url, forceRefresh);
       
       set({
         channels: data.channels,

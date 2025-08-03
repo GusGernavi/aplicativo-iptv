@@ -10,8 +10,11 @@ import HomeScreen from './src/screens/HomeScreen';
 import LiveTVScreen from './src/screens/LiveTVScreen';
 import MoviesScreen from './src/screens/MoviesScreen';
 import SeriesScreen from './src/screens/SeriesScreen';
+import SeriesDetailScreen from './src/screens/SeriesDetailScreen';
+import SeasonDetailScreen from './src/screens/SeasonDetailScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
 import PlayerScreen from './src/screens/PlayerScreen';
+import PlayerTestScreen from './src/screens/PlayerTestScreen';
 
 // Components
 import TabBarIcon from './src/components/TabBarIcon';
@@ -93,6 +96,32 @@ export default function App() {
               title: 'Reproduzindo',
               headerStyle: {
                 backgroundColor: '#000000',
+              },
+              headerTintColor: '#FFFFFF',
+            }}
+          />
+          <Stack.Screen 
+            name="SeriesDetail" 
+            component={SeriesDetailScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="SeasonDetail" 
+            component={SeasonDetailScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="PlayerTest" 
+            component={PlayerTestScreen}
+            options={{
+              headerShown: true,
+              title: 'Teste do Player',
+              headerStyle: {
+                backgroundColor: '#1C1C1E',
               },
               headerTintColor: '#FFFFFF',
             }}

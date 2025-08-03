@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   View,
   Text,
@@ -22,28 +22,59 @@ const SeriesScreen: React.FC = () => {
   const {getFilteredSeries, categories, selectedCategory, setSelectedCategory} = useIPTVStore();
   const series = getFilteredSeries();
 
-  const handleSeriesPress = (show: any) => {
-    navigation.navigate('Player', {
-      url: show.url,
-      title: show.name,
-      type: 'series',
+  // Agrupar séries por nome
+  const groupedSeries = useMemo(() => {
+    const seriesMap = new Map<string, any[]>();
+    
+    series.forEach(item => {
+      // Extrair nome da série (remover temporada/episódio do nome)
+      let seriesName = item.name;
+      
+      // Remover padrões de temporada/episódio do nome
+      seriesName = seriesName
+        .replace(/temporada\s*\d+/i, '')
+        .replace(/season\s*\d+/i, '')
+        .replace(/s\d+/i, '')
+        .replace(/episódio\s*\d+/i, '')
+        .replace(/episode\s*\d+/i, '')
+        .replace(/e\d+/i, '')
+        .replace(/^\s*-\s*/, '') // remover hífens no início
+        .replace(/\s*-\s*$/, '') // remover hífens no final
+        .trim();
+      
+      if (!seriesMap.has(seriesName)) {
+        seriesMap.set(seriesName, []);
+      }
+      seriesMap.get(seriesName)!.push(item);
+    });
+    
+    // Converter para array e ordenar
+    return Array.from(seriesMap.entries())
+      .map(([name, items]) => ({name, items}))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [series]);
+
+  const handleSeriesPress = (seriesGroup: {name: string; items: any[]}) => {
+    navigation.navigate('SeriesDetail', {
+      seriesName: seriesGroup.name,
+      seriesItems: seriesGroup.items,
     });
   };
 
-  const renderSeries = ({item}: {item: any}) => (
+  const renderSeries = ({item}: {item: {name: string; items: any[]}}) => (
     <TouchableOpacity 
       style={styles.seriesItem}
       onPress={() => handleSeriesPress(item)}>
       <Image
-        source={{uri: item.logo || 'https://via.placeholder.com/120x180/FF3B30/FFFFFF?text=Serie'}}
+        source={{uri: item.items[0]?.logo || 'https://via.placeholder.com/120x180/FF3B30/FFFFFF?text=Serie'}}
         style={styles.seriesPoster}
         resizeMode="cover"
       />
       <View style={styles.seriesInfo}>
         <Text style={styles.seriesTitle}>{item.name}</Text>
-        {item.category && (
-          <Text style={styles.seriesCategory}>{item.category}</Text>
-        )}
+        <Text style={styles.seriesCategory}>
+          {item.items.length} episódio{item.items.length !== 1 ? 's' : ''}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -82,11 +113,11 @@ const SeriesScreen: React.FC = () => {
       )}
 
       {/* Series List */}
-      {series.length > 0 ? (
+      {groupedSeries.length > 0 ? (
         <FlatList
-          data={series}
+          data={groupedSeries}
           renderItem={renderSeries}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.name}
           numColumns={2}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}

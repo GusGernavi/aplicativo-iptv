@@ -186,6 +186,16 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Developer Tools */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Ferramentas de Desenvolvimento</Text>
+        <TouchableOpacity 
+          style={styles.devButton}
+          onPress={() => navigation.navigate('PlayerTest')}>
+          <Text style={styles.devButtonText}>🧪 Testar Player de Vídeo</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 };
@@ -313,6 +323,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  devButton: {
+    backgroundColor: '#FF6B35',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  devButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
